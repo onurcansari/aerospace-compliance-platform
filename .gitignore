@@ -1,0 +1,23 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Veritabani
+*.db
+*.db-shm
+*.db-wal
+
+# Vektör veritabani
+chroma_db/
+
+# Yüklenen dosyalar
+uploads/
+
+# Ortam degiskenleri (API key'ler burada!)
+.env
+
+# VS Code
+.vscode/
