@@ -1,7 +1,7 @@
 """
 ComplianceService
 Kullanicinin yukledigи teknik raporu standartlarla karsilastirir.
-RAG kullanarak ilgili maddeleri bulur, OpenAI ile analiz eder.
+Google Gemini API kullanarak uyumluluk analizi yapar.
 """
 import json
 import time
@@ -21,21 +21,18 @@ from src.rag.vector_store import VectorStore
 
 
 class ComplianceService:
-    """
-    Teknik rapor yukleme ve uyumluluk analizi islemlerini yonetir.
-
-    Kullanim:
-        service = ComplianceService(db)
-        report = service.upload_report(...)
-        result = service.analyze(report_id=1, query="vibrasyon testi")
-    """
 
     def __init__(self, db: Session, openai_api_key: Optional[str] = None):
         self._report_repo = ReportRepository(db)
         self._analysis_repo = AnalysisRepository(db)
         self._extractor = PDFExtractor()
         self._vector_store = VectorStore()
-        self._openai_key = openai_api_key
+
+        # .env dosyasindan Gemini key'i oku
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        self._api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
 
     def upload_report(
         self,
@@ -46,7 +43,6 @@ class ComplianceService:
         file_size_bytes: int,
     ) -> UserReport:
         """Kullanicinin raporunu kaydeder ve metnini cikarir."""
-
         report = UserReport(
             title=title,
             file_path=file_path,
@@ -56,7 +52,6 @@ class ComplianceService:
         )
         saved = self._report_repo.save(report)
 
-        # PDF'ten metni cikar
         try:
             self._report_repo.update_status(saved.id, ReportStatus.PROCESSING)
             doc = self._extractor.extract(file_path)
@@ -65,7 +60,7 @@ class ComplianceService:
                 ReportStatus.COMPLETED,
                 extracted_text=doc.full_text,
             )
-            logger.info(f"Rapor yuklendi ve islendi: '{title}' (id={saved.id})")
+            logger.info(f"Rapor yuklendi: '{title}' (id={saved.id})")
         except Exception as e:
             self._report_repo.update_status(saved.id, ReportStatus.FAILED)
             logger.error(f"Rapor islenirken hata: {e}")
@@ -80,24 +75,16 @@ class ComplianceService:
         standard_id: Optional[int] = None,
         top_k: int = 5,
     ) -> dict:
-        """
-        Kullanicinin sorusunu RAG ile analiz eder.
-
-        1. Raporu veritabanindan al
-        2. ChromaDB'den ilgili standart maddelerini bul
-        3. OpenAI ile uyumluluk analizi yap
-        4. Sonucu AnalysisLog olarak kaydet
-        """
+        """RAG ile ilgili maddeleri bulur, Gemini ile analiz yapar."""
         start_time = time.time()
 
-        # Raporu getir
         report = self._report_repo.get_by_id(report_id)
         if not report:
             raise ValueError(f"Rapor bulunamadi: id={report_id}")
         if not report.extracted_text:
             raise ValueError("Rapor metni henuz cikarilmamis.")
 
-        # RAG: Ilgili standart maddelerini bul
+        # RAG: ilgili standart maddelerini bul
         search_results = self._vector_store.search(
             query=query,
             top_k=top_k,
@@ -107,7 +94,7 @@ class ComplianceService:
         if not search_results:
             return {
                 "status": "no_results",
-                "message": "Ilgili standart maddesi bulunamadi. Once standart PDF'ini yukleyin.",
+                "message": "Ilgili standart maddesi bulunamadi.",
                 "query": query,
             }
 
@@ -117,7 +104,7 @@ class ComplianceService:
             for i, r in enumerate(search_results)
         ])
 
-        # AI analizi yap
+        # Gemini ile analiz
         verdict, reasoning, confidence = self._run_ai_analysis(
             report_text=report.extracted_text[:3000],
             context=context,
@@ -129,7 +116,7 @@ class ComplianceService:
         # Sonucu kaydet
         log = AnalysisLog(
             report_id=report_id,
-            requirement_id=1,  # Genel analiz icin
+            requirement_id=1,
             verdict=verdict,
             ai_reasoning=reasoning,
             confidence_score=confidence,
@@ -160,7 +147,6 @@ class ComplianceService:
         }
 
     def get_compliance_summary(self, report_id: int) -> dict:
-        """Bir raporun genel uyumluluk ozetini doner."""
         report = self._report_repo.get_by_id(report_id)
         if not report:
             raise ValueError(f"Rapor bulunamadi: id={report_id}")
@@ -170,60 +156,70 @@ class ComplianceService:
         return summary
 
     def list_reports(self, status: Optional[str] = None) -> List[UserReport]:
-        """Tum raporlari listeler."""
         rep_status = ReportStatus(status) if status else None
         return self._report_repo.get_all(status=rep_status)
 
-    def _run_ai_analysis(
-        self,
-        report_text: str,
-        context: str,
-        query: str,
-    ):
+    def _run_ai_analysis(self, report_text: str, context: str, query: str):
         """
-        OpenAI API ile uyumluluk analizi yapar.
-        API key yoksa demo mod calisir.
+        Google Gemini API ile uyumluluk analizi yapar.
+        Key yoksa demo mod calisir.
         """
-        if not self._openai_key:
-            logger.warning("OpenAI API key yok, demo mod calisiyor.")
+        if not self._api_key:
+            logger.warning("API key bulunamadi, demo mod calisiyor.")
             return self._demo_analysis(query)
 
         try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self._openai_key)
+            import google.genai as genai
+
+            client = genai.Client(api_key=self._api_key)
 
             prompt = f"""Sen bir havacilik ve savunma standartlari uzmanisın.
 Asagida bir teknik rapordan alinti ve ilgili standart maddeleri verilmistir.
 
-KULLANICI SORUSU: {query}
+KULLANICI SORUSU:
+{query}
 
 TEKNIK RAPOR (ilk 3000 karakter):
 {report_text}
 
-ILGILI STANDART MADDELERI (RAG ile bulundu):
+ILGILI STANDART MADDELERI:
 {context}
 
-Gorеvin:
+Gorev:
 1. Teknik raporun bu standart maddelerine uyumlu olup olmadigini analiz et.
-2. Verdict olarak sadece su degerlerden birini sec: COMPLIANT, PARTIAL, NON_COMPLIANT, INSUFFICIENT
-3. Turkce aciklama yaz.
-4. 0.0-1.0 arasi guven skoru ver.
+2. Asagidaki degerlerden birini sec:
+   - COMPLIANT - tam uyumlu
+   - PARTIAL - kismi uyumlu
+   - NON_COMPLIANT - uyumsuz
+   - INSUFFICIENT - yetersiz veri
+3. Turkce detayli aciklama yaz.
+4. 0.0 ile 1.0 arasinda guven skoru ver.
 
-Yanıtını SADECE su JSON formatinda ver:
+SADECE asagidaki JSON formatinda yanit ver:
 {{
   "verdict": "COMPLIANT",
   "reasoning": "Aciklama buraya...",
   "confidence": 0.85
 }}"""
 
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
             )
+            raw = response.text.strip()
 
-            raw = response.choices[0].message.content
-            data = json.loads(raw)
+            # Gemini bazen ```json ``` ile sarar, temizle
+            if "```" in raw:
+                parts = raw.split("```")
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    if part.startswith("{"):
+                        raw = part
+                        break
+
+            data = json.loads(raw.strip())
 
             verdict_map = {
                 "COMPLIANT": ComplianceVerdict.COMPLIANT,
@@ -231,19 +227,29 @@ Yanıtını SADECE su JSON formatinda ver:
                 "NON_COMPLIANT": ComplianceVerdict.NON_COMPLIANT,
                 "INSUFFICIENT": ComplianceVerdict.INSUFFICIENT_DATA,
             }
-            verdict = verdict_map.get(data["verdict"], ComplianceVerdict.INSUFFICIENT_DATA)
-            return verdict, data["reasoning"], float(data["confidence"])
+
+            verdict = verdict_map.get(
+                data.get("verdict", "INSUFFICIENT"),
+                ComplianceVerdict.INSUFFICIENT_DATA,
+            )
+            reasoning = data.get("reasoning", "Aciklama alinamadi.")
+            confidence = float(data.get("confidence", 0.5))
+
+            logger.info(
+                f"Gemini analizi tamamlandi: "
+                f"verdict={verdict.value}, confidence={confidence:.2f}"
+            )
+            return verdict, reasoning, confidence
 
         except Exception as e:
-            logger.error(f"OpenAI API hatasi: {e}")
+            logger.error(f"Gemini API hatasi: {e}")
             return self._demo_analysis(query)
 
     @staticmethod
     def _demo_analysis(query: str):
-        """OpenAI key olmadan calisir, test icin kullanilir."""
+        """API key olmadan calisir, test icin kullanilir."""
         reasoning = (
             f"[DEMO MOD] '{query}' sorusu icin RAG basariyla calistı. "
-            "Gercek analiz icin OpenAI API key gereklidir. "
-            "Ilgili standart maddeleri basariyla bulundu ve context olusturuldu."
+            "Gercek analiz icin .env dosyasina Gemini API key ekleyin."
         )
         return ComplianceVerdict.INSUFFICIENT_DATA, reasoning, 0.5
