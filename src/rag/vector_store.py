@@ -44,6 +44,9 @@ class VectorStore:
             logger.warning("Eklenecek chunk yok.")
             return
 
+        # Once eskileri sil
+        self._delete_by_standard(standard_id)
+
         ids = [c.chunk_id for c in chunks]
         documents = [c.text for c in chunks]
         metadatas = [
@@ -55,16 +58,18 @@ class VectorStore:
             for c in chunks
         ]
 
-        # Mevcut chunklari sil (yeniden indeksleme icin)
-        self._delete_by_standard(standard_id)
+        # Kucuk gruplara bolarak ekle
+        batch_size = 100
+        for i in range(0, len(chunks), batch_size):
+            self._collection.add(
+                ids=ids[i:i + batch_size],
+                documents=documents[i:i + batch_size],
+                metadatas=metadatas[i:i + batch_size],
+            )
 
-        self._collection.add(
-            ids=ids,
-            documents=documents,
-            metadatas=metadatas,
+        logger.info(
+            f"standard_id={standard_id}: {len(chunks)} chunk ChromaDB'ye eklendi."
         )
-        logger.info(f"standard_id={standard_id}: {len(chunks)} chunk ChromaDB'ye eklendi.")
-
     def search(self, query: str, top_k: int = 5, standard_id: Optional[int] = None) -> List[SearchResult]:
         """Sorguya en yakin chunklari bulur."""
         where = {"standard_id": standard_id} if standard_id else None
@@ -100,14 +105,23 @@ class VectorStore:
     def _delete_by_standard(self, standard_id: int) -> None:
         """Bir standarda ait tum chunklari siler."""
         try:
+            # Once mevcut chunk'lari getir
             existing = self._collection.get(
                 where={"standard_id": standard_id}
             )
-            if existing["ids"]:
-                self._collection.delete(ids=existing["ids"])
-                logger.info(f"standard_id={standard_id}: {len(existing['ids'])} eski chunk silindi.")
-        except Exception:
-            pass
-
+            if existing and existing["ids"]:
+                logger.info(
+                    f"standard_id={standard_id}: "
+                    f"{len(existing['ids'])} eski chunk siliniyor..."
+                )
+                # Kucuk gruplara bolarak sil (ChromaDB bazen buyuk silmelerde takilir)
+                ids = existing["ids"]
+                batch_size = 100
+                for i in range(0, len(ids), batch_size):
+                    batch = ids[i:i + batch_size]
+                    self._collection.delete(ids=batch)
+                logger.info(f"standard_id={standard_id}: eski chunk'lar silindi.")
+        except Exception as e:
+            logger.warning(f"Eski chunk silerken hata (devam ediliyor): {e}")
     def get_chunk_count(self) -> int:
         return self._collection.count()
