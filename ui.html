@@ -756,12 +756,27 @@ async function queryStandards(question,stdId) {
 }
 
 function displayAnswer(result) {
-  if(result.type==='query') {
-    const d=result.data;
-    if(d.status==='no_results'||!d.sources||!d.sources.length) { addMessage('assistant',t('no_result')); return; }
-    let msg=`<b>${t('src_title')}</b><br><br>`;
-    d.sources.forEach(s=>{ msg+=`<div style="margin-bottom:12px;padding:10px 12px;background:rgba(59,130,246,.05);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;"><div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:5px;">${t('page').toUpperCase()} ${s.page} · ${t('sim').toUpperCase()}: ${s.similarity}</div><div style="font-size:13px;line-height:1.65;">${s.preview}</div></div>`; });
-    addMessage('assistant',msg,{sources:d.sources.map(s=>({page:s.page,sim:s.similarity}))});
+  if (result.type === 'query') {
+    const d = result.data;
+    if (d.status === 'no_results' || !d.sources || !d.sources.length) {
+      addMessage('assistant', t('no_result'));
+      return;
+    }
+
+    // Gemini'nin urettigi dogal dil cevabi
+    let msg = '';
+    if (d.answer) {
+      // Markdown'u basit HTML'e cevir
+      let formatted = d.answer
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/\*(.*?)\*/g, '<i>$1</i>')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>')
+        .replace(/^#{1,3}\s(.+)/gm, '<b>$1</b>');
+      msg = formatted;
+    }
+
+    addMessage('assistant', msg, { sources: d.sources.map(s => ({ page: s.page, sim: s.similarity })) });
   } else if(result.type==='analysis') {
     const d=result.data;
     if(d.status==='no_results') { addMessage('assistant',t('no_result')); return; }

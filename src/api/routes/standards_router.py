@@ -116,13 +116,16 @@ def query_standards(
     request: QueryRequest,
     db: Session = Depends(get_db),
 ):
-    """Standartlara direkt soru sor."""
+    """Standartlara direkt soru sor, Gemini ile cevap uret."""
+    import os, json
+    from dotenv import load_dotenv
     from src.rag.vector_store import VectorStore
 
     soru = request.get_question()
     if not soru:
         raise HTTPException(status_code=400, detail="Soru bos olamaz.")
 
+    # 1. RAG ile ilgili parcalari bul
     store = VectorStore()
     results = store.search(
         query=soru,
@@ -134,16 +137,65 @@ def query_standards(
         return {
             "question": soru,
             "status": "no_results",
+            "answer": None,
             "sources": [],
         }
 
+    # 2. Context olustur
+    context = "\n\n---\n\n".join([
+        f"[Sayfa {r.page_number} | Benzerlik: {r.similarity_score:.0%}]\n{r.text}"
+        for r in results
+    ])
+
+    # 3. Gemini ile dogal dil cevabi uret
+    load_dotenv()
+    api_key = os.getenv("OPENAI_API_KEY")
+    answer = None
+
+    if api_key:
+        try:
+            import google.genai as genai
+            client = genai.Client(api_key=api_key)
+
+            prompt = f"""Sen bir havacilik ve savunma standartlari uzmanisın.
+Asagida bir kullanicinin sorusu ve ilgili standart belgelerinden alinmis parcalar var.
+
+KULLANICI SORUSU:
+{soru}
+
+STANDART BELGELERİNDEN İLGİLİ BOLUMLER:
+{context}
+
+Gorеvin:
+- Soruyu standart belgelerine dayanarak Turkce olarak cevapla.
+- Dogal, akici ve anlasilir bir dil kullan — bir uzman gibi konuş.
+- Hangi bolumden, hangi sayfadan aldigini referans olarak belirt.
+- Eger belgede yeterli bilgi yoksa bunu ac ve net belirt.
+- Madde madde veya paragraf seklinde yaz, ham metin kopyalama.
+"""
+
+            response = client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=prompt,
+            )
+            answer = response.text.strip()
+
+        except Exception as e:
+            logger.error(f"Gemini hatasi: {e}")
+            answer = None
+
+    # Gemini yoksa veya hata varsa ham parcalari goster
+    if not answer:
+        answer = context
+
     return {
         "question": soru,
+        "answer": answer,
         "sources": [
             {
                 "page": r.page_number,
                 "similarity": f"%{int(r.similarity_score * 100)}",
-                "preview": r.text[:400] + "...",
+                "preview": r.text[:300] + "...",
             }
             for r in results
         ],
