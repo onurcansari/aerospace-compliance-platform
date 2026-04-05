@@ -14,12 +14,7 @@ class TextChunk:
 
 
 class TextChunker:
-    """
-    Uzun metni kucuk, anlamli parcalara boler.
 
-    chunk_size: Her parcada kac kelime olsun (varsayilan 200)
-    overlap:    Parcalar arasi kac kelime cakissin (baglam icin)
-    """
 
     def __init__(self, chunk_size: int = 200, overlap: int = 40):
         self.chunk_size = chunk_size
