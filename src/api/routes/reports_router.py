@@ -1,7 +1,4 @@
-"""
-Reports API Route'lari
-Kullanici raporlarinin yuklenmesi ve listelenmesi.
-"""
+
 import os
 import shutil
 from typing import Optional
@@ -65,8 +62,7 @@ async def upload_report(
     db: Session = Depends(get_db),
 ):
     """
-    Kullanicinin teknik raporunu yukler.
-    Sadece PDF kabul edilir.
+PDF yeterli
     """
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Sadece PDF dosyasi yuklenebilir.")
