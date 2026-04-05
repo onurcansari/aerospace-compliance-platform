@@ -1,7 +1,3 @@
-"""
-Metni anlamsal parcalara (chunk) ayirir.
-Her chunk ChromaDB'ye ayri bir vektor olarak kaydedilir.
-"""
 from dataclasses import dataclass
 from typing import List
 
