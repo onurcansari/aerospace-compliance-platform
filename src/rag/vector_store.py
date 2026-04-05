@@ -1,7 +1,4 @@
-"""
-ChromaDB ile vektor veritabani islemleri.
-PDF chunklari buraya kaydedilir ve benzerlik aramasi yapilir.
-"""
+
 from dataclasses import dataclass
 from typing import List, Optional
 
