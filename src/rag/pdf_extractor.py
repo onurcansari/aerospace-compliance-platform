@@ -1,7 +1,4 @@
-"""
-PDF'ten metin cikaran modul.
-MIL-STD-810H gibi standart PDF'leri icin optimize edilmistir.
-"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
