@@ -1,7 +1,4 @@
-"""
-Standards API Route'lari
-/api/standards altindaki tum endpoint'ler buradadir.
-"""
+
 import os
 import shutil
 from typing import Optional
@@ -17,7 +14,6 @@ from src.infrastructure.database.connection import get_db
 router = APIRouter(prefix="/api/standards", tags=["Standards"])
 
 
-# ── Request / Response Modelleri ─────────────────────────────────────────────
 
 class CreateStandardRequest(BaseModel):
     code: str
@@ -51,7 +47,6 @@ class QueryRequest(BaseModel):
         return self.question or self.query or ""
 
 
-# ── Endpoint'ler ──────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=list[StandardResponse])
 def list_standards(
@@ -76,7 +71,7 @@ def list_standards(
         )
         for s in standards
     ]
-
+""" güncelendi """
 
 @router.post("/", response_model=StandardResponse, status_code=201)
 def create_standard(
@@ -184,7 +179,6 @@ Gorеvin:
             logger.error(f"Gemini hatasi: {e}")
             answer = None
 
-    # Gemini yoksa veya hata varsa ham parcalari goster
     if not answer:
         answer = context
 

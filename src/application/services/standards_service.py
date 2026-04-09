@@ -1,8 +1,4 @@
-"""
-StandardsService
-Standartlarla ilgili tum is mantigi buradadir.
-API katmani dogrudan veritabanina dokunmaz, bu servis uzerinden calisir.
-"""
+
 from typing import List, Optional
 
 from loguru import logger
@@ -16,13 +12,7 @@ from src.rag.vector_store import VectorStore
 
 
 class StandardsService:
-    """
-    Standart ekleme, listeleme ve PDF indeksleme islemlerini yonetir.
 
-    Kullanim:
-        service = StandardsService(db)
-        standard = service.create_standard(...)
-    """
 
     def __init__(self, db: Session):
         self._repo = StandardRepository(db)
@@ -66,7 +56,7 @@ class StandardsService:
         return self._repo.get_all(status=std_status)
 
     def get_standard(self, standard_id: int) -> Standard:
-        """ID ile tek standart getirir."""
+        """ID ile bir standart getirir."""
         standard = self._repo.get_by_id(standard_id)
         if not standard:
             raise ValueError(f"Standart bulunamadi: id={standard_id}")
