@@ -75,7 +75,8 @@ class AnalysisLogModel(Base):
 
     id                   = Column(Integer, primary_key=True, autoincrement=True)
     report_id            = Column(Integer, ForeignKey("user_reports.id", ondelete="CASCADE"), nullable=False, index=True)
-    requirement_id       = Column(Integer, ForeignKey("requirements.id", ondelete="CASCADE"), nullable=False, index=True)
+    requirement_id       = Column(Integer, ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True, index=True)
+    
     verdict              = Column(String(20), nullable=False)
     ai_reasoning         = Column(Text, nullable=False)
     confidence_score     = Column(Float, nullable=False)

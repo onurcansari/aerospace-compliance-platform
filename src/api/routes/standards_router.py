@@ -204,6 +204,7 @@ Gorеvin:
 
 @router.post("/bulk-index")
 async def bulk_index_pdfs(
+    
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):

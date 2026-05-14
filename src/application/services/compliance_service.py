@@ -114,17 +114,39 @@ class ComplianceService:
         duration_ms = int((time.time() - start_time) * 1000)
 
         # Sonucu kaydet
-        log = AnalysisLog(
-            report_id=report_id,
-            requirement_id=1,
+        from src.infrastructure.models.orm_models import AnalysisLogModel
+        from src.infrastructure.database.connection import SessionLocal
+        import json
+
+        try:
+            db = SessionLocal()
+            log_model = AnalysisLogModel(
+                report_id=report_id,
+                requirement_id=None,  # NULL olarak kaydet
+                verdict=verdict.value,
+                ai_reasoning=reasoning,
+                confidence_score=confidence,
+                retrieved_chunks=json.dumps([r.chunk_id for r in search_results]),
+                llm_model_used="gemini-2.5-flash",
+                analysis_duration_ms=duration_ms,
+            )
+            db.add(log_model)
+            db.commit()
+            db.refresh(log_model)
+            log_id = log_model.id
+            db.close()
+        except Exception as e:
+            logger.warning(f"Log kaydedilemedi (analiz devam ediyor): {e}")
+            log_id = None
+
+        from src.domain.entities.analysis_log import AnalysisLog as AnalysisLogEntity
+        temp_log = AnalysisLogEntity(
+            report_id = report_id,
+            requirement_id=0,
             verdict=verdict,
             ai_reasoning=reasoning,
             confidence_score=confidence,
-            retrieved_chunks=json.dumps([r.chunk_id for r in search_results]),
-            analysis_duration_ms=duration_ms,
         )
-        saved_log = self._analysis_repo.save(log)
-
         return {
             "analysis_id": saved_log.id,
             "report_id": report_id,

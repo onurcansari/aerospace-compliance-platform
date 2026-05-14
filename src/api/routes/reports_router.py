@@ -1,13 +1,11 @@
 """
 Reports API Route'lari
-Kullanici raporlarinin yuklenmesi ve listelenmesi.
 """
 import os
 import shutil
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -41,7 +39,6 @@ def list_reports(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """Tum raporlari listeler."""
     service = ComplianceService(db)
     reports = service.list_reports(status=status)
     return [
@@ -59,20 +56,19 @@ def list_reports(
 
 @router.post("/upload", status_code=201)
 async def upload_report(
-    title: str,
-    report_type: str = "DESIGN",
     file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    report_type: str = Form("DESIGN"),
     db: Session = Depends(get_db),
 ):
-    """
-    Kullanicinin teknik raporunu yukler.
-    Sadece PDF kabul edilir.
-    """
-    if not file.filename.endswith(".pdf"):
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Sadece PDF dosyasi yuklenebilir.")
 
-    # Dosyayi kaydet
+    report_title = title or file.filename.replace(".pdf", "").replace(".PDF", "")
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
     file_path = os.path.join(UPLOAD_DIR, file.filename)
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -81,7 +77,7 @@ async def upload_report(
     service = ComplianceService(db)
     try:
         report = service.upload_report(
-            title=title,
+            title=report_title,
             file_path=file_path,
             original_filename=file.filename,
             report_type=report_type,
@@ -104,10 +100,6 @@ def analyze_report(
     request: AnalyzeRequest,
     db: Session = Depends(get_db),
 ):
-    """
-    Raporu standartlarla karsilastirir.
-    RAG kullanarak ilgili maddeleri bulur ve AI analizi yapar.
-    """
     service = ComplianceService(db)
     try:
         result = service.analyze(
@@ -125,8 +117,10 @@ def analyze_report(
 
 
 @router.get("/{report_id}/summary")
-def get_compliance_summary(report_id: int, db: Session = Depends(get_db)):
-    """Raporun uyumluluk ozetini getirir."""
+def get_compliance_summary(
+    report_id: int,
+    db: Session = Depends(get_db),
+):
     service = ComplianceService(db)
     try:
         return service.get_compliance_summary(report_id)
